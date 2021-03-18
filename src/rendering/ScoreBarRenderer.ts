@@ -421,9 +421,9 @@ export class ScoreBarRenderer extends BarRendererBase {
             let drawingInfo = new BeamingHelperDrawInfo();
             h.drawingInfos.set(direction, drawingInfo);
 
-            // the beaming logic works like this: 
-            // 1. we take the first and last note, add the stem, and put a diagnal line between them. 
-            // 2. the height of the diagonal line must not exceed a max height, 
+            // the beaming logic works like this:
+            // 1. we take the first and last note, add the stem, and put a diagnal line between them.
+            // 2. the height of the diagonal line must not exceed a max height,
             //    - if this is the case, the line on the more distant note just gets longer
             // 3. any middle elements (notes or rests) shift this diagonal line up/down to avoid overlaps
 
@@ -731,7 +731,9 @@ export class ScoreBarRenderer extends BarRendererBase {
             if (!text) {
                 continue;
             }
-            canvas.fillText(text, beatLineX, topY);
+            // SGP PATCH
+            const fixTopY = (value: number) => value + (note.beat.duration === 1 ? 10 : 0)
+            canvas.fillText(text, beatLineX, fixTopY(topY));
             topY -= canvas.font.size | 0;
         }
     }
@@ -960,7 +962,7 @@ export class ScoreBarRenderer extends BarRendererBase {
     }
 
     public completeBeamingHelper(helper: BeamingHelper) {
-        // for multi-voice bars we need to register the positions 
+        // for multi-voice bars we need to register the positions
         // for multi-voice rest displacement to avoid collisions
         if (this.bar.isMultiVoice && helper.highestNoteInHelper && helper.lowestNoteInHelper) {
             let highestNotePosition = this.getNoteY(helper.highestNoteInHelper, NoteYPosition.Center);
