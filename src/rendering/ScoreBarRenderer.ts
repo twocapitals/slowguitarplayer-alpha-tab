@@ -732,7 +732,7 @@ export class ScoreBarRenderer extends BarRendererBase {
                 continue;
             }
             // SGP PATCH
-            const fixTopY = (value: number) => value + (note.beat.duration === 1 ? 10 : 0)
+            const fixTopY = (value: number) => value + (note.beat.duration === 1 ? 15 : 0)
             canvas.fillText(text, beatLineX, fixTopY(topY));
             topY -= canvas.font.size | 0;
         }
