@@ -16,7 +16,7 @@ namespace AlphaTab.VisualTests
     partial class VisualTestHelper
     {
         public static async Task RunVisualTest(string inputFile, Settings? settings = null,
-            IList<double>? tracks = null, string? message = null, double tolerancePercent = 1)
+            IList<double>? tracks = null, string? message = null, double tolerancePercent = 1, bool triggerResize = false)
         {
             try
             {
@@ -27,7 +27,7 @@ namespace AlphaTab.VisualTests
                 var score = ScoreLoader.LoadScoreFromBytes(inputFileData, settings);
 
                 await RunVisualTestScore(score, referenceFileName, settings,
-                    tracks, message, tolerancePercent);
+                    tracks, message, tolerancePercent, triggerResize);
             }
             catch (Exception e)
             {
@@ -58,7 +58,7 @@ namespace AlphaTab.VisualTests
 
         public static async Task RunVisualTestScore(Score score, string referenceFileName,
             Settings? settings = null,
-            IList<double>? tracks = null, string? message = null, double tolerancePercent = 1)
+            IList<double>? tracks = null, string? message = null, double tolerancePercent = 1, bool triggerResize = false)
         {
             settings ??= new Settings();
             tracks ??= new Core.List<double> {0};
@@ -92,13 +92,19 @@ namespace AlphaTab.VisualTests
             var result = new AlphaTab.Core.List<RenderFinishedEventArgs>();
             var totalWidth = 0.0;
             var totalHeight = 0.0;
+            var isResizeRender = false;
 
             var task = new TaskCompletionSource<object?>();
             var renderer = new ScoreRenderer(settings)
             {
                 Width = 1300
             };
-
+            renderer.PreRender.On(isResize =>
+            {
+                result = new AlphaTab.Core.List<RenderFinishedEventArgs>();
+                totalWidth = 0.0;
+                totalHeight = 0.0;
+            });
             renderer.PartialRenderFinished.On(e =>
             {
                 if (e != null)
@@ -111,13 +117,19 @@ namespace AlphaTab.VisualTests
                 totalWidth = e.TotalWidth;
                 totalHeight = e.TotalHeight;
                 result.Add(e);
-                task.SetResult(null);
+                if(!triggerResize || isResizeRender)
+                {
+                    task.SetResult(null);
+                }
+                else if(triggerResize)
+                {
+                    isResizeRender = true;
+                    renderer.ResizeRender();
+                }
             });
             renderer.Error.On((e) => { task.SetException(e); });
 
-            var renderScore =
-                JsonConverter.JsObjectToScore(JsonConverter.ScoreToJsObject(score), settings);
-            renderer.RenderScore(renderScore, tracks);
+            renderer.RenderScore(score, tracks);
 
             if (await Task.WhenAny(task.Task, Task.Delay(2000)) == task.Task)
             {
@@ -205,7 +217,7 @@ namespace AlphaTab.VisualTests
             var finalImageFileName = Path.ChangeExtension(referenceFileName, ".new.png");
             using (finalBitmap)
             {
-                var dir = Path.GetDirectoryName(finalImageFileName);
+                var dir = Path.GetDirectoryName(finalImageFileName)!;
                 Directory.CreateDirectory(dir);
 
                 using (var fileStream = new SKFileWStream(finalImageFileName))
