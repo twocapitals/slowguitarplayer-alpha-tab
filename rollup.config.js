@@ -4,9 +4,14 @@ const dts = require('rollup-plugin-dts').default;
 const copy = require('rollup-plugin-copy');
 const license = require('rollup-plugin-license');
 const serve = require('rollup-plugin-serve');
+/*
 const fs = require('fs');
+*/
 
 function getGitBranch() {
+    // SGP PATCH
+    return 'develop'
+    /*
     const filepath = '.git/HEAD';
     if (!fs.existsSync(filepath)) {
         throw new Error('.git/HEAD does not exist');
@@ -14,6 +19,7 @@ function getGitBranch() {
     const buf = fs.readFileSync(filepath);
     const match = /ref: refs\/heads\/([^\n]+)/.exec(buf.toString());
     return match ? match[1] : '';
+    */
 }
 
 const commonOutput = {
