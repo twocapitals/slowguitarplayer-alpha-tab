@@ -8,11 +8,11 @@ import { BeatOnNoteGlyphBase } from '@src/rendering/glyphs/BeatOnNoteGlyphBase';
 import { Glyph } from '@src/rendering/glyphs/Glyph';
 import { VoiceContainerGlyph } from '@src/rendering/glyphs/VoiceContainerGlyph';
 import { BarLayoutingInfo } from '@src/rendering/staves/BarLayoutingInfo';
-import { BarBounds } from '../utils/BarBounds';
-import { BeatBounds } from '../utils/BeatBounds';
-import { Bounds } from '../utils/Bounds';
-import { FlagGlyph } from './FlagGlyph';
-import { NoteHeadGlyph } from './NoteHeadGlyph';
+import { BarBounds } from '@src/rendering/utils/BarBounds';
+import { BeatBounds } from '@src/rendering/utils/BeatBounds';
+import { Bounds } from '@src/rendering/utils/Bounds';
+import { FlagGlyph } from '@src/rendering/glyphs/FlagGlyph';
+import { NoteHeadGlyph } from '@src/rendering/glyphs/NoteHeadGlyph';
 
 export class BeatContainerGlyph extends Glyph {
     public static readonly GraceBeatPadding:number = 3;
@@ -76,7 +76,7 @@ export class BeatContainerGlyph extends Glyph {
         this.updateWidth();
     }
 
-    public doLayout(): void {
+    public override doLayout(): void {
         this.preNotes.x = 0;
         this.preNotes.renderer = this.renderer;
         this.preNotes.container = this;
@@ -136,7 +136,7 @@ export class BeatContainerGlyph extends Glyph {
         return 'b' + beat.id;
     }
 
-    public paint(cx: number, cy: number, canvas: ICanvas): void {
+    public override paint(cx: number, cy: number, canvas: ICanvas): void {
         if (this.beat.voice.isEmpty) {
             return;
         }

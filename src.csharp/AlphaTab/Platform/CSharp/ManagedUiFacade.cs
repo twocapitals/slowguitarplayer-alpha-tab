@@ -44,7 +44,7 @@ namespace AlphaTab.Platform.CSharp
         public IAlphaSynth CreateWorkerPlayer()
         {
             var player = new ManagedThreadAlphaSynthWorkerApi(CreateSynthOutput(),
-                Api.Settings.Core.LogLevel, BeginInvoke);
+                Api.Settings.Core.LogLevel, BeginInvoke, Api.Settings.Player.BufferTimeInMilliseconds);
             player.Ready.On(() =>
             {
                 using (var sf = OpenDefaultSoundFont())
@@ -87,6 +87,7 @@ namespace AlphaTab.Platform.CSharp
         protected abstract void RenderTracks();
 
         public abstract void BeginAppendRenderResults(RenderFinishedEventArgs? renderResults);
+        public abstract void BeginUpdateRenderResults(RenderFinishedEventArgs? renderResults);
         public abstract void DestroyCursors();
         public abstract Cursors? CreateCursors();
         public abstract void BeginInvoke(Action action);

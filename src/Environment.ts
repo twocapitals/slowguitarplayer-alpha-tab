@@ -1,4 +1,5 @@
-import { LayoutMode, StaveProfile } from '@src/DisplaySettings';
+import { LayoutMode } from '@src/LayoutMode';
+import { StaveProfile } from '@src/StaveProfile';
 import { AlphaTexImporter } from '@src/importer/AlphaTexImporter';
 import { Gp3To5Importer } from '@src/importer/Gp3To5Importer';
 import { Gp7Importer } from '@src/importer/Gp7Importer';
@@ -41,22 +42,21 @@ import { WhammyBarEffectInfo } from '@src/rendering/effects/WhammyBarEffectInfo'
 import { WideBeatVibratoEffectInfo } from '@src/rendering/effects/WideBeatVibratoEffectInfo';
 import { WideNoteVibratoEffectInfo } from '@src/rendering/effects/WideNoteVibratoEffectInfo';
 import { EffectBarRendererInfo } from '@src/rendering/EffectBarRendererInfo';
-import { IScoreRenderer } from '@src/rendering/IScoreRenderer';
 import { HorizontalScreenLayout } from '@src/rendering/layout/HorizontalScreenLayout';
 import { PageViewLayout } from '@src/rendering/layout/PageViewLayout';
 import { ScoreLayout } from '@src/rendering/layout/ScoreLayout';
 import { ScoreBarRendererFactory } from '@src/rendering/ScoreBarRendererFactory';
 import { ScoreRenderer } from '@src/rendering/ScoreRenderer';
 import { TabBarRendererFactory } from '@src/rendering/TabBarRendererFactory';
-import { Settings } from '@src/Settings';
 import { FontLoadingChecker } from '@src/util/FontLoadingChecker';
 import { Logger } from '@src/Logger';
-import { LeftHandTapEffectInfo } from './rendering/effects/LeftHandTapEffectInfo';
-import { CapellaImporter } from './importer/CapellaImporter';
-import { ResizeObserverPolyfill } from './platform/javascript/ResizeObserverPolyfill';
-import { WebPlatform } from './platform/javascript/WebPlatform';
-import { IntersectionObserverPolyfill } from './platform/javascript/IntersectionObserverPolyfill';
-import { AlphaSynthWebWorklet } from './platform/javascript/AlphaSynthAudioWorkletOutput';
+import { LeftHandTapEffectInfo } from '@src/rendering/effects/LeftHandTapEffectInfo';
+import { CapellaImporter } from '@src/importer/CapellaImporter';
+import { ResizeObserverPolyfill } from '@src/platform/javascript/ResizeObserverPolyfill';
+import { WebPlatform } from '@src/platform/javascript/WebPlatform';
+import { IntersectionObserverPolyfill } from '@src/platform/javascript/IntersectionObserverPolyfill';
+import { AlphaSynthWebWorklet } from '@src/platform/javascript/AlphaSynthAudioWorkletOutput';
+import { AlphaTabError, AlphaTabErrorType } from './AlphaTabError';
 
 export class LayoutEngineFactory {
     public readonly vertical: boolean;
@@ -192,6 +192,11 @@ export class Environment {
     /**
      * @target web
      */
+    public static isWebPackBundled: boolean = Environment.detectWebPack();
+
+    /**
+     * @target web
+     */
     public static scriptFile: string | null = Environment.detectScriptFile();
 
     /**
@@ -215,6 +220,45 @@ export class Environment {
 
     /**
      * @target web
+     */
+    public static createAlphaTabWorker(scriptFile: string | null): Worker {
+        if (Environment.isWebPackBundled) {
+            // WebPack currently requires this exact syntax: new Worker(new URL(..., import.meta.url)))
+            // The module `@coderline/alphatab` will be resolved by WebPack to alphaTab consumed as library
+            // this will not work with CDNs because worker start scripts need to have the same origin like
+            // the current browser. 
+
+            // https://github.com/webpack/webpack/discussions/14066
+
+            return new Worker(
+                // @ts-ignore
+                /* webpackChunkName: "alphatab.worker" */ new URL('@coderline/alphatab', import.meta.url)
+            );
+        }
+
+        if (!scriptFile) {
+            throw new AlphaTabError(AlphaTabErrorType.General, "Could not detect alphaTab script file, cannot initialize renderer");
+        }
+
+        try {
+            if (Environment.webPlatform === WebPlatform.BrowserModule) {
+                const script: string = `import * as alphaTab from '${scriptFile}'`;
+                const blob: Blob = new Blob([script], { type: 'text/javascript' });
+                return new Worker(URL.createObjectURL(blob), { type: 'module' });
+            } else {
+                const script: string = `importScripts('${scriptFile}')`;
+                const blob: Blob = new Blob([script]);
+                return new Worker(URL.createObjectURL(blob));
+            }
+        }
+        catch (e) {
+            Logger.warning('Rendering', 'Could not create inline worker, fallback to normal worker');
+            return new Worker(scriptFile);
+        }
+    }
+
+    /**
+     * @target web
      * @partial
      */
     public static throttle(action: () => void, delay: number): () => void {
@@ -229,10 +273,27 @@ export class Environment {
      * @target web
      */
     private static detectScriptFile(): string | null {
-        if (!('document' in Environment.globalThis)) {
-            return null;
+        // browser include as ES6 import
+        // <script type="module">
+        // import * as alphaTab from 'dist/alphaTab.js';
+        try {
+            // @ts-ignore
+            const importUrl = import.meta.url;
+            // avoid using file:// urls in case of
+            // bundlers like webpack
+            if (importUrl && importUrl.indexOf('file://') === -1) {
+                return importUrl;
+            }
+        } catch (e) {
+            // ignore potential errors
         }
-        return (document.currentScript as HTMLScriptElement).src;
+
+        // normal browser include as <script>
+        if ('document' in Environment.globalThis && document.currentScript) {
+            return (document.currentScript as HTMLScriptElement).src;
+        }
+
+        return null;
     }
 
     /**
@@ -264,22 +325,18 @@ export class Environment {
     public static layoutEngines: Map<LayoutMode, LayoutEngineFactory> = Environment.createDefaultLayoutEngines();
     public static staveProfiles: Map<StaveProfile, BarRendererFactory[]> = Environment.createDefaultStaveProfiles();
 
-    public static createScoreRenderer(settings: Settings): IScoreRenderer {
-        return new ScoreRenderer(settings);
-    }
-
-    public static getRenderEngineFactory(settings: Settings): RenderEngineFactory {
-        if (!settings.core.engine || !Environment.renderEngines.has(settings.core.engine)) {
+    public static getRenderEngineFactory(engine: string): RenderEngineFactory {
+        if (!engine || !Environment.renderEngines.has(engine)) {
             return Environment.renderEngines.get('default')!;
         }
-        return Environment.renderEngines.get(settings.core.engine)!;
+        return Environment.renderEngines.get(engine)!;
     }
 
-    public static getLayoutEngineFactory(settings: Settings): LayoutEngineFactory {
-        if (!settings.display.layoutMode || !Environment.layoutEngines.has(settings.display.layoutMode)) {
+    public static getLayoutEngineFactory(layoutMode: LayoutMode): LayoutEngineFactory {
+        if (!layoutMode || !Environment.layoutEngines.has(layoutMode)) {
             return Environment.layoutEngines.get(LayoutMode.Page)!;
         }
-        return Environment.layoutEngines.get(settings.display.layoutMode)!;
+        return Environment.layoutEngines.get(layoutMode)!;
     }
 
     /**
@@ -475,7 +532,10 @@ export class Environment {
         } else if (Environment.isRunningInWorker) {
             AlphaTabWebWorker.init();
             AlphaSynthWebWorker.init();
-        } else if (Environment.webPlatform === WebPlatform.Browser) {
+        } else if (
+            Environment.webPlatform === WebPlatform.Browser ||
+            Environment.webPlatform === WebPlatform.BrowserModule
+        ) {
             Environment.registerJQueryPlugin();
             Environment.HighDpiFactor = window.devicePixelRatio;
             // ResizeObserver API does not yet exist so long on Safari (only start 2020 with iOS Safari 13.7 and Desktop 13.1)
@@ -488,7 +548,31 @@ export class Environment {
             if (!('IntersectionObserver' in Environment.globalThis)) {
                 (Environment.globalThis as any).IntersectionObserver = IntersectionObserverPolyfill;
             }
+
+            if(!('replaceChildren' in Element.prototype)) {
+                Element.prototype.replaceChildren = function (...nodes: (Node | string)[]) {
+                    this.innerHTML = '';
+                    this.append(...nodes);
+                };
+                Document.prototype.replaceChildren = Element.prototype.replaceChildren;
+                DocumentFragment.prototype.replaceChildren = Element.prototype.replaceChildren;
+            }
         }
+    }
+
+    /**
+     * @target web
+     */
+    private static detectWebPack(): boolean {
+        try {
+            // @ts-ignore
+            if (typeof __webpack_require__ === 'function') {
+                return true;
+            }
+        } catch (e) {
+            // ignore any errors
+        }
+        return false;
     }
 
     /**
@@ -506,6 +590,16 @@ export class Environment {
             }
         } catch (e) {
             // no node.js
+        }
+
+        try {
+            // @ts-ignore
+            const url: any = import.meta.url;
+            if (url && typeof url === 'string' && !url.startsWith('file://')) {
+                return WebPlatform.BrowserModule;
+            }
+        } catch (e) {
+            // no browser module
         }
 
         return WebPlatform.Browser;

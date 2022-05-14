@@ -11,10 +11,12 @@ import { JsonConverter } from '@src/model/JsonConverter';
 import { Logger } from '@src/Logger';
 import { LogLevel } from '@src/LogLevel';
 import { SynthConstants } from '@src/synth/SynthConstants';
-import { ProgressEventArgs } from '@src/alphatab';
+import { ProgressEventArgs } from '@src/ProgressEventArgs';
 import { FileLoadError } from '@src/FileLoadError';
 import { MidiEventsPlayedEventArgs } from '@src/synth/MidiEventsPlayedEventArgs';
 import { MidiEventType } from '@src/midi/MidiEvent';
+import { Environment } from '@src/Environment';
+import { PlaybackRangeChangedEventArgs } from '@src/synth/PlaybackRangeChangedEventArgs';
 
 /**
  * a WebWorker based alphaSynth which uses the given player as output.
@@ -108,7 +110,7 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
         this._synth.postMessage({
             cmd: 'alphaSynth.setMidiEventsPlayedFilter',
             value: value
-        })
+        });
     }
 
     public get playbackSpeed(): number {
@@ -186,7 +188,12 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
         });
     }
 
-    public constructor(player: ISynthOutput, alphaSynthScriptFile: string, logLevel: LogLevel) {
+    public constructor(
+        player: ISynthOutput,
+        alphaSynthScriptFile: string,
+        logLevel: LogLevel,
+        bufferTimeInMilliseconds: number
+    ) {
         this._workerIsReadyForPlayback = false;
         this._workerIsReady = false;
         this._outputIsReady = false;
@@ -202,25 +209,18 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
         this._output.ready.on(this.onOutputReady.bind(this));
         this._output.samplesPlayed.on(this.onOutputSamplesPlayed.bind(this));
         this._output.sampleRequest.on(this.onOutputSampleRequest.bind(this));
-        this._output.open();
+        this._output.open(bufferTimeInMilliseconds);
         try {
-            let script: string = "importScripts('" + alphaSynthScriptFile + "')";
-            let blob: Blob = new Blob([script]);
-            this._synth = new Worker(URL.createObjectURL(blob));
+            this._synth = Environment.createAlphaTabWorker(alphaSynthScriptFile);
         } catch (e) {
-            // fallback to direct worker
-            try {
-                this._synth = new Worker(alphaSynthScriptFile);
-            } catch (e2) {
-                Logger.error('AlphaSynth', 'Failed to create WebWorker: ' + e2);
-                return;
-            }
+            Logger.error('AlphaSynth', 'Failed to create WebWorker: ' + e);
         }
         this._synth.addEventListener('message', this.handleWorkerMessage.bind(this), false);
         this._synth.postMessage({
             cmd: 'alphaSynth.initialize',
             sampleRate: this._output.sampleRate,
-            logLevel: logLevel
+            logLevel: logLevel,
+            bufferTimeInMilliseconds: bufferTimeInMilliseconds
         });
         this.masterVolume = 1;
         this.playbackSpeed = 1;
@@ -362,7 +362,13 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
                 this._timePosition = data.currentTime;
                 this._tickPosition = data.currentTick;
                 (this.positionChanged as EventEmitterOfT<PositionChangedEventArgs>).trigger(
-                    new PositionChangedEventArgs(data.currentTime, data.endTime, data.currentTick, data.endTick, data.isSeek)
+                    new PositionChangedEventArgs(
+                        data.currentTime,
+                        data.endTime,
+                        data.currentTick,
+                        data.endTick,
+                        data.isSeek
+                    )
                 );
                 break;
             case 'alphaSynth.midiEventsPlayed':
@@ -374,6 +380,12 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
                 this._state = data.state;
                 (this.stateChanged as EventEmitterOfT<PlayerStateChangedEventArgs>).trigger(
                     new PlayerStateChangedEventArgs(data.state, data.stopped)
+                );
+                break;
+            case 'alphaSynth.playbackRangeChanged':
+                this._playbackRange = (data as PlaybackRangeChangedEventArgs).playbackRange;
+                (this.playbackRangeChanged as EventEmitterOfT<PlaybackRangeChangedEventArgs>).trigger(
+                    new PlaybackRangeChangedEventArgs(this._playbackRange)
                 );
                 break;
             case 'alphaSynth.finished':
@@ -388,7 +400,13 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
             case 'alphaSynth.midiLoaded':
                 this.checkReadyForPlayback();
                 (this.midiLoaded as EventEmitterOfT<PositionChangedEventArgs>).trigger(
-                    new PositionChangedEventArgs(data.currentTime, data.endTime, data.currentTick, data.endTick, data.isSeek)
+                    new PositionChangedEventArgs(
+                        data.currentTime,
+                        data.endTime,
+                        data.currentTick,
+                        data.endTick,
+                        data.isSeek
+                    )
                 );
                 break;
             case 'alphaSynth.midiLoadFailed':
@@ -430,19 +448,16 @@ export class AlphaSynthWebWorkerApi implements IAlphaSynth {
     readonly finished: IEventEmitter = new EventEmitter();
     readonly soundFontLoaded: IEventEmitter = new EventEmitter();
     readonly soundFontLoadFailed: IEventEmitterOfT<Error> = new EventEmitterOfT<Error>();
-    readonly midiLoaded: IEventEmitterOfT<PositionChangedEventArgs> = new EventEmitterOfT<
-        PositionChangedEventArgs
-    >();
+    readonly midiLoaded: IEventEmitterOfT<PositionChangedEventArgs> = new EventEmitterOfT<PositionChangedEventArgs>();
     readonly midiLoadFailed: IEventEmitterOfT<Error> = new EventEmitterOfT<Error>();
-    readonly stateChanged: IEventEmitterOfT<PlayerStateChangedEventArgs> = new EventEmitterOfT<
-        PlayerStateChangedEventArgs
-    >();
-    readonly positionChanged: IEventEmitterOfT<PositionChangedEventArgs> = new EventEmitterOfT<
-        PositionChangedEventArgs
-    >(); 
-    readonly midiEventsPlayed: IEventEmitterOfT<MidiEventsPlayedEventArgs> = new EventEmitterOfT<
-        MidiEventsPlayedEventArgs
-    >();
+    readonly stateChanged: IEventEmitterOfT<PlayerStateChangedEventArgs> =
+        new EventEmitterOfT<PlayerStateChangedEventArgs>();
+    readonly positionChanged: IEventEmitterOfT<PositionChangedEventArgs> =
+        new EventEmitterOfT<PositionChangedEventArgs>();
+    readonly midiEventsPlayed: IEventEmitterOfT<MidiEventsPlayedEventArgs> =
+        new EventEmitterOfT<MidiEventsPlayedEventArgs>();
+    readonly playbackRangeChanged: IEventEmitterOfT<PlaybackRangeChangedEventArgs> =
+        new EventEmitterOfT<PlaybackRangeChangedEventArgs>();
 
     //
     // output communication ( output -> worker )

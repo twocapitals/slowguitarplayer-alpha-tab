@@ -102,8 +102,10 @@ export class PlayerSettings {
 
     /**
      * Gets or sets the element that should be used for scrolling.
+     * @target web
+     * @json_read_only
      */
-    public scrollElement: string = 'html,body';
+    public scrollElement: string | HTMLElement = 'html,body';
 
     /**
      * Gets or sets whether the player should be enabled.
@@ -184,4 +186,11 @@ export class PlayerSettings {
      * Gets or sets whether the triplet feel should be applied/played during audio playback.
      */
     public playTripletFeel: boolean = true;
+
+    /**
+     * Gets or sets how many milliseconds of audio samples should be buffered in total. 
+     * Larger buffers cause a delay from when audio settings like volumes will be applied. 
+     * Smaller buffers can cause audio crackling due to constant buffering that is happening.
+     */
+    public bufferTimeInMilliseconds:number = 500;
 }

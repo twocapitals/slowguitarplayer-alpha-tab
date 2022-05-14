@@ -1,8 +1,9 @@
 import { CircularSampleBuffer } from '@src/synth/ds/CircularSampleBuffer';
 import { Environment } from '@src/Environment';
 import { Logger } from '@src/Logger';
-import { AlphaSynthWorkerSynthOutput } from './AlphaSynthWorkerSynthOutput';
-import { AlphaSynthWebAudioOutputBase } from './AlphaSynthWebAudioOutputBase';
+import { AlphaSynthWorkerSynthOutput } from '@src/platform/javascript/AlphaSynthWorkerSynthOutput';
+import { AlphaSynthWebAudioOutputBase } from '@src/platform/javascript/AlphaSynthWebAudioOutputBase';
+import { SynthConstants } from '@src/synth/SynthConstants';
 
 /**
  * @target web
@@ -40,29 +41,27 @@ declare var sampleRate: number;
 export class AlphaSynthWebWorklet {
     private static _isRegistered = false;
     public static init() {
-        if(AlphaSynthWebWorklet._isRegistered) {
+        if (AlphaSynthWebWorklet._isRegistered) {
             return;
         }
-        AlphaSynthWebWorklet._isRegistered = true; 
+        AlphaSynthWebWorklet._isRegistered = true;
         registerProcessor(
             'alphatab',
             class AlphaSynthWebWorkletProcessor extends AudioWorkletProcessor {
                 public static readonly BufferSize: number = 4096;
-                private static readonly TotalBufferTimeInMilliseconds: number = 5000;
 
                 private _outputBuffer: Float32Array = new Float32Array(0);
                 private _circularBuffer!: CircularSampleBuffer;
                 private _bufferCount: number = 0;
                 private _requestedBufferCount: number = 0;
 
-                constructor(...args: any[]) {
-                    super(...args);
+                constructor(options: AudioWorkletNodeOptions) {
+                    super(options);
 
-                    Logger.info('WebAudio', 'creating processor');
+                    Logger.debug('WebAudio', 'creating processor');
 
                     this._bufferCount = Math.floor(
-                        (AlphaSynthWebWorkletProcessor.TotalBufferTimeInMilliseconds *
-                            sampleRate) /
+                        (options.processorOptions.bufferTimeInMilliseconds * sampleRate) /
                             1000 /
                             AlphaSynthWebWorkletProcessor.BufferSize
                     );
@@ -88,7 +87,7 @@ export class AlphaSynthWebWorklet {
                     }
                 }
 
-                public process(
+                public override process(
                     _inputs: Float32Array[][],
                     outputs: Float32Array[][],
                     _parameters: Record<string, Float32Array>
@@ -110,7 +109,11 @@ export class AlphaSynthWebWorklet {
                         buffer = new Float32Array(samples);
                         this._outputBuffer = buffer;
                     }
-                    this._circularBuffer.read(buffer, 0, Math.min(buffer.length, this._circularBuffer.count));
+                    const samplesFromBuffer = this._circularBuffer.read(
+                        buffer,
+                        0,
+                        Math.min(buffer.length, this._circularBuffer.count)
+                    );
                     let s: number = 0;
                     for (let i: number = 0; i < left.length; i++) {
                         left[i] = buffer[s++];
@@ -118,7 +121,7 @@ export class AlphaSynthWebWorklet {
                     }
                     this.port.postMessage({
                         cmd: AlphaSynthWorkerSynthOutput.CmdOutputSamplesPlayed,
-                        samples: left.length
+                        samples: samplesFromBuffer / SynthConstants.AudioChannels
                     });
                     this.requestBuffers();
 
@@ -157,13 +160,15 @@ export class AlphaSynthWebWorklet {
  */
 export class AlphaSynthAudioWorkletOutput extends AlphaSynthWebAudioOutputBase {
     private _worklet: AudioWorkletNode | null = null;
+    private _bufferTimeInMilliseconds: number = 0;
 
-    public open() {
-        super.open();
+    public override open(bufferTimeInMilliseconds: number) {
+        super.open(bufferTimeInMilliseconds);
+        this._bufferTimeInMilliseconds = bufferTimeInMilliseconds;
         this.onReady();
     }
 
-    public play(): void {
+    public override play(): void {
         super.play();
         let ctx = this._context!;
         // create a script processor node which will replace the silence with the generated audio
@@ -171,10 +176,12 @@ export class AlphaSynthAudioWorkletOutput extends AlphaSynthWebAudioOutputBase {
             () => {
                 this._worklet = new AudioWorkletNode(ctx!, 'alphatab', {
                     numberOfOutputs: 1,
-                    outputChannelCount: [2]
+                    outputChannelCount: [2],
+                    processorOptions: {
+                        bufferTimeInMilliseconds: this._bufferTimeInMilliseconds
+                    }
                 });
                 this._worklet.port.onmessage = this.handleMessage.bind(this);
-
                 this._source!.connect(this._worklet);
                 this._source!.start(0);
                 this._worklet.connect(ctx!.destination);
@@ -198,7 +205,7 @@ export class AlphaSynthAudioWorkletOutput extends AlphaSynthWebAudioOutputBase {
         }
     }
 
-    public pause(): void {
+    public override pause(): void {
         super.pause();
         if (this._worklet) {
             this._worklet.port.onmessage = null;

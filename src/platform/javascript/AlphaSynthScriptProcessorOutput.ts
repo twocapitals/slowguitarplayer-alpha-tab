@@ -1,5 +1,6 @@
 import { CircularSampleBuffer } from '@src/synth/ds/CircularSampleBuffer';
-import { AlphaSynthWebAudioOutputBase } from './AlphaSynthWebAudioOutputBase';
+import { AlphaSynthWebAudioOutputBase } from '@src/platform/javascript/AlphaSynthWebAudioOutputBase';
+import { SynthConstants } from '@src/synth/SynthConstants';
 
 // tslint:disable: deprecation
 
@@ -14,18 +15,16 @@ export class AlphaSynthScriptProcessorOutput extends AlphaSynthWebAudioOutputBas
     private _bufferCount: number = 0;
     private _requestedBufferCount: number = 0;
 
-    public open() {
-        super.open();
+    public override open(bufferTimeInMilliseconds: number) {
+        super.open(bufferTimeInMilliseconds);
         this._bufferCount = Math.floor(
-            (AlphaSynthWebAudioOutputBase.TotalBufferTimeInMilliseconds * this.sampleRate) /
-                1000 /
-                AlphaSynthWebAudioOutputBase.BufferSize
+            (bufferTimeInMilliseconds * this.sampleRate) / 1000 / AlphaSynthWebAudioOutputBase.BufferSize
         );
         this._circularBuffer = new CircularSampleBuffer(AlphaSynthWebAudioOutputBase.BufferSize * this._bufferCount);
         this.onReady();
     }
 
-    public play(): void {
+    public override play(): void {
         super.play();
         let ctx = this._context!;
         // create a script processor node which will replace the silence with the generated audio
@@ -41,7 +40,7 @@ export class AlphaSynthScriptProcessorOutput extends AlphaSynthWebAudioOutputBas
         this._audioNode.connect(ctx.destination, 0, 0);
     }
 
-    public pause(): void {
+    public override pause(): void {
         super.pause();
         if (this._audioNode) {
             this._audioNode.disconnect(0);
@@ -86,13 +85,17 @@ export class AlphaSynthScriptProcessorOutput extends AlphaSynthWebAudioOutputBas
             buffer = new Float32Array(samples);
             this._outputBuffer = buffer;
         }
-        this._circularBuffer.read(buffer, 0, Math.min(buffer.length, this._circularBuffer.count));
+        const samplesFromBuffer = this._circularBuffer.read(
+            buffer,
+            0,
+            Math.min(buffer.length, this._circularBuffer.count)
+        );
         let s: number = 0;
         for (let i: number = 0; i < left.length; i++) {
             left[i] = buffer[s++];
             right[i] = buffer[s++];
         }
-        this.onSamplesPlayed(left.length);
+        this.onSamplesPlayed(samplesFromBuffer / SynthConstants.AudioChannels);
         this.requestBuffers();
     }
 }

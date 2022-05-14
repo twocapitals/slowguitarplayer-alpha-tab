@@ -20,8 +20,8 @@ import { Bounds } from '@src/rendering/utils/Bounds';
 import { MasterBarBounds } from '@src/rendering/utils/MasterBarBounds';
 import { RenderingResources } from '@src/RenderingResources';
 import { Settings } from '@src/Settings';
-import { BeatOnNoteGlyphBase } from './glyphs/BeatOnNoteGlyphBase';
-import { BeamingHelper } from './utils/BeamingHelper';
+import { BeatOnNoteGlyphBase } from '@src/rendering/glyphs/BeatOnNoteGlyphBase';
+import { BeamingHelper } from '@src/rendering/utils/BeamingHelper';
 
 /**
  * Lists the different position modes for {@link BarRendererBase.getNoteY}
@@ -311,7 +311,7 @@ export class BarRendererBase {
     }
 
     protected getVoiceContainer(voice: Voice): VoiceContainerGlyph | undefined {
-        return this._voiceContainers.get(voice.index);
+        return this._voiceContainers.has(voice.index) ? this._voiceContainers.get(voice.index) : undefined;
     }
 
     public getBeatContainer(beat: Beat): BeatContainerGlyph | undefined {

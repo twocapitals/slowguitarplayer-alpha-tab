@@ -23,7 +23,7 @@
 
 import { XmlNode, XmlNodeType } from '@src/xml/XmlNode';
 import { XmlParser } from '@src/xml/XmlParser';
-import { XmlWriter } from './XmlWriter';
+import { XmlWriter } from '@src/xml/XmlWriter';
 
 export class XmlDocument extends XmlNode {
     public constructor() {
@@ -35,7 +35,7 @@ export class XmlDocument extends XmlNode {
         XmlParser.parse(xml, 0, this);
     }
 
-    public toString() {
+    public override toString() {
         return this.toFormattedString();
     }
 

@@ -25,10 +25,29 @@ import { BrowserMouseEventArgs } from '@src/platform/javascript/BrowserMouseEven
 import { Cursors } from '@src/platform/Cursors';
 import { JsonConverter } from '@src/model/JsonConverter';
 import { SettingsSerializer } from '@src/generated/SettingsSerializer';
-import { WebPlatform } from './WebPlatform';
-import { AlphaTabError } from '@src/AlphaTabError';
-import { AlphaTabErrorType } from '@src/alphatab';
-import { AlphaSynthAudioWorkletOutput } from './AlphaSynthAudioWorkletOutput';
+import { WebPlatform } from '@src/platform/javascript/WebPlatform';
+import { AlphaTabError, AlphaTabErrorType } from '@src/AlphaTabError';
+import { AlphaSynthAudioWorkletOutput } from '@src/platform/javascript/AlphaSynthAudioWorkletOutput';
+
+/**
+ * @target web
+ */
+enum ResultState {
+    LayoutDone,
+    RenderRequested,
+    RenderDone,
+    Detached
+}
+
+/**
+ * @target web
+ */
+interface ResultPlaceholder extends HTMLElement {
+    layoutResultId?: string;
+    resultState: ResultState;
+    renderedResult?: Element[];
+    renderedResultId?: string;
+}
 
 /**
  * @target web
@@ -42,6 +61,7 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
     private _initialTrackIndexes: number[] | null = null;
     private _intersectionObserver: IntersectionObserver;
     private _barToElementLookup: Map<number, HTMLElement> = new Map<number, HTMLElement>();
+    private _resultIdToElementLookup: Map<string, ResultPlaceholder> = new Map<string, ResultPlaceholder>();
 
     public rootContainerBecameVisible: IEventEmitter = new EventEmitter();
     public canRenderChanged: IEventEmitter = new EventEmitter();
@@ -86,7 +106,7 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
     }
 
     public constructor(rootElement: HTMLElement) {
-        if (Environment.webPlatform !== WebPlatform.Browser) {
+        if (Environment.webPlatform !== WebPlatform.Browser && Environment.webPlatform !== WebPlatform.BrowserModule) {
             throw new AlphaTabError(
                 AlphaTabErrorType.General,
                 'Usage of AlphaTabApi is only possible in browser environments. For usage in node use the Low Level APIs'
@@ -105,14 +125,31 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
 
     private onElementVisibilityChanged(entries: IntersectionObserverEntry[]) {
         for (const e of entries) {
-            if (e.isIntersecting) {
-                const htmlElement = e.target as HTMLElement;
-                if (htmlElement === (this.rootContainer as HtmlElementContainer).element) {
+            const htmlElement = e.target as HTMLElement;
+            if (htmlElement === (this.rootContainer as HtmlElementContainer).element) {
+                if (e.isIntersecting) {
                     (this.rootContainerBecameVisible as EventEmitter).trigger();
                     this._intersectionObserver.unobserve((this.rootContainer as HtmlElementContainer).element);
-                } else if ('svg' in htmlElement.dataset) {
-                    this.replacePlaceholder(htmlElement, htmlElement.dataset['svg'] as string);
-                    this._intersectionObserver.unobserve(htmlElement);
+                }
+            } else if ('layoutResultId' in htmlElement && this._api.settings.core.enableLazyLoading) {
+                const placeholder = htmlElement as ResultPlaceholder;
+                if (e.isIntersecting) {
+                    // missing result or result not matching layout -> request render
+                    if (placeholder.renderedResultId !== placeholder.layoutResultId) {
+                        if (this._resultIdToElementLookup.has(placeholder.layoutResultId!)) {
+                            this._api.renderer.renderResult(placeholder.layoutResultId!);
+                        } else {
+                            htmlElement.replaceChildren();
+                        }
+                    }
+                    // detached and became visible
+                    else if (placeholder.resultState === ResultState.Detached) {
+                        htmlElement.replaceChildren(...placeholder.renderedResult!);
+                        placeholder.resultState = ResultState.RenderDone;
+                    }
+                } else if (placeholder.resultState === ResultState.RenderDone) {
+                    placeholder.resultState = ResultState.Detached;
+                    placeholder.replaceChildren();
                 }
             }
         }
@@ -122,7 +159,7 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
         return new AlphaTabWorkerScoreRenderer<unknown>(this._api, this._api.settings);
     }
 
-    public initialize(api: AlphaTabApiBase<unknown>, raw: unknown): void {
+    public initialize(api: AlphaTabApiBase<unknown>, raw: any | Settings): void {
         this._api = api;
         let settings: Settings;
         if (raw instanceof Settings) {
@@ -183,6 +220,7 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
         canvasElement.style.fontSize = '0';
         canvasElement.style.overflow = 'hidden';
         canvasElement.style.lineHeight = '0';
+        canvasElement.style.position = 'relative';
         return new HtmlElementContainer(canvasElement);
     }
 
@@ -258,6 +296,7 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
     public initialRender(): void {
         this._api.renderer.preRender.on((_: boolean) => {
             this._totalResultCount = 0;
+            this._resultIdToElementLookup.clear();
             this._barToElementLookup.clear();
         });
 
@@ -379,56 +418,73 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
         return dataAttributes;
     }
 
-    public beginAppendRenderResults(renderResult: RenderFinishedEventArgs): void {
-        let canvasElement: HTMLElement = (this._api.canvasElement as HtmlElementContainer).element;
+    public beginUpdateRenderResults(renderResult: RenderFinishedEventArgs): void {
+        if (!this._resultIdToElementLookup.has(renderResult.id)) {
+            return;
+        }
+
+        const placeholder = this._resultIdToElementLookup.get(renderResult.id)!;
+
+        const body: any = renderResult.renderResult;
+        if (typeof body === 'string') {
+            placeholder.innerHTML = body;
+        } else if ('nodeType' in body) {
+            placeholder.replaceChildren(body as Node);
+        }
+        placeholder.resultState = ResultState.RenderDone;
+        placeholder.renderedResultId = renderResult.id;
+        placeholder.renderedResult = Array.from(placeholder.children);
+    }
+
+    public beginAppendRenderResults(renderResult: RenderFinishedEventArgs | null): void {
+        const canvasElement: HTMLElement = (this._api.canvasElement as HtmlElementContainer).element;
         // null result indicates that the rendering finished
         if (!renderResult) {
             // so we remove elements that might be from a previous render session
             while (canvasElement.childElementCount > this._totalResultCount) {
+                if (this._api.settings.core.enableLazyLoading) {
+                    this._intersectionObserver.unobserve(canvasElement.lastChild as Element);
+                }
                 canvasElement.removeChild(canvasElement.lastChild!);
             }
         } else {
-            let body: unknown = renderResult.renderResult;
-            if (typeof body === 'string') {
-                let placeholder: HTMLElement;
-                if (this._totalResultCount < canvasElement.childElementCount) {
-                    placeholder = canvasElement.childNodes.item(this._totalResultCount) as HTMLElement;
-                } else {
-                    placeholder = document.createElement('div');
-                    canvasElement.appendChild(placeholder);
-                }
-                placeholder.style.width = renderResult.width + 'px';
-                placeholder.style.height = renderResult.height + 'px';
-                placeholder.style.display = 'inline-block';
-                if (!this._api.settings.core.enableLazyLoading) {
-                    this.replacePlaceholder(placeholder, body);
-                } else {
-                    placeholder.dataset['svg'] = body;
-                    this._intersectionObserver.observe(placeholder);
-                }
+            let placeholder: ResultPlaceholder;
+            if (this._totalResultCount < canvasElement.childElementCount) {
+                placeholder = canvasElement.childNodes.item(this._totalResultCount) as ResultPlaceholder;
+            } else {
+                placeholder = document.createElement('div') as unknown as ResultPlaceholder;
+                canvasElement.appendChild(placeholder);
+            }
+            placeholder.style.zIndex = '1';
+            placeholder.style.position = 'absolute';
+            placeholder.style.left = renderResult.x + 'px';
+            placeholder.style.top = renderResult.y + 'px';
+            placeholder.style.width = renderResult.width + 'px';
+            placeholder.style.height = renderResult.height + 'px';
+            placeholder.style.display = 'inline-block';
+            placeholder.layoutResultId = renderResult.id;
+            placeholder.resultState = ResultState.LayoutDone;
+            delete placeholder.renderedResultId;
+            delete placeholder.renderedResult;
 
-                // remember which bar is contained in which node for faster lookup
-                // on highlight/unhighlight
-                for (let i = renderResult.firstMasterBarIndex; i <= renderResult.lastMasterBarIndex; i++) {
+            this._resultIdToElementLookup.set(renderResult.id, placeholder);
+
+            // remember which bar is contained in which node for faster lookup
+            // on highlight/unhighlight
+            for (let i = renderResult.firstMasterBarIndex; i <= renderResult.lastMasterBarIndex; i++) {
+                if (i >= 0) {
                     this._barToElementLookup.set(i, placeholder);
                 }
-            } else {
-                if (this._totalResultCount < canvasElement.childElementCount) {
-                    canvasElement.replaceChild(
-                        renderResult.renderResult as Node,
-                        canvasElement.childNodes.item(this._totalResultCount)
-                    );
-                } else {
-                    canvasElement.appendChild(renderResult.renderResult as Node);
-                }
             }
+
+            if (this._api.settings.core.enableLazyLoading) {
+                // re-observe to fire event
+                this._intersectionObserver.unobserve(placeholder);
+                this._intersectionObserver.observe(placeholder);
+            }
+
             this._totalResultCount++;
         }
-    }
-
-    private replacePlaceholder(placeholder: HTMLElement, body: any) {
-        placeholder.innerHTML = body;
-        delete placeholder.dataset['svg'];
     }
 
     /**
@@ -436,7 +492,6 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
      * initializes a alphaSynth version for the client.
      */
     public createWorkerPlayer(): IAlphaSynth | null {
-        
         let alphaSynthScriptFile: string | null = Environment.scriptFile;
         if (!alphaSynthScriptFile) {
             Logger.error('Player', 'alphaTab script file could not be detected, player cannot initialize');
@@ -445,22 +500,27 @@ export class BrowserUiFacade implements IUiFacade<unknown> {
 
         let player: AlphaSynthWebWorkerApi | null = null;
         let supportsScriptProcessor: boolean = 'ScriptProcessorNode' in window;
-        let supportsAudioWorklets: boolean = window.isSecureContext && 'AudioWorkletNode' in window;
-        
-        if(supportsAudioWorklets) {
+
+        // Once https://github.com/webpack/webpack/issues/11543 is decided
+        // we can support audio worklets together with WebPack
+        let supportsAudioWorklets: boolean =
+            window.isSecureContext && 'AudioWorkletNode' in window && !Environment.isWebPackBundled;
+
+        if (supportsAudioWorklets) {
             Logger.debug('Player', 'Will use webworkers for synthesizing and web audio api with worklets for playback');
             player = new AlphaSynthWebWorkerApi(
                 new AlphaSynthAudioWorkletOutput(),
                 alphaSynthScriptFile,
-                this._api.settings.core.logLevel
+                this._api.settings.core.logLevel,
+                this._api.settings.player.bufferTimeInMilliseconds
             );
-        }
-        else if (supportsScriptProcessor) {
+        } else if (supportsScriptProcessor) {
             Logger.debug('Player', 'Will use webworkers for synthesizing and web audio api for playback');
             player = new AlphaSynthWebWorkerApi(
                 new AlphaSynthScriptProcessorOutput(),
                 alphaSynthScriptFile,
-                this._api.settings.core.logLevel
+                this._api.settings.core.logLevel,
+                this._api.settings.player.bufferTimeInMilliseconds
             );
         }
 

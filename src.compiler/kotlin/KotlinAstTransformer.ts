@@ -1,5 +1,6 @@
 import * as ts from 'typescript';
 import * as cs from '../csharp/CSharpAst';
+import * as path from 'path';
 import CSharpEmitterContext from '../csharp/CSharpEmitterContext';
 import CSharpAstTransformer from '../csharp/CSharpAstTransformer';
 
@@ -7,13 +8,16 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
     public constructor(typeScript: ts.SourceFile, context: CSharpEmitterContext) {
         super(typeScript, context);
         this._testClassAttribute = '';
-        this._testMethodAttribute = 'org.junit.Test';
+        this._testMethodAttribute = 'kotlin.test.Test';
     }
 
-    public get extension(): string {
-        return '.kt'
+    public override get extension(): string {
+        return '.kt';
     }
 
+    public override get targetTag(): string {
+        return 'kotlin';
+    }
 
     private _paramReferences: Map<string, cs.Identifier[]>[] = [];
     private _paramsWithAssignment: Set<string>[] = [];
@@ -22,7 +26,23 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return 'param' + name;
     }
 
-    protected getIdentifierName(identifier: cs.Identifier, expression: ts.Identifier): string {
+    protected override buildFileName(fileName: string, context: CSharpEmitterContext): string {
+        let parts = this.removeExtension(fileName).split(path.sep);
+        if (parts.length > 0) {
+            switch (parts[0]) {
+                case 'src':
+                    parts[0] = path.join('commonMain', 'generated');
+                    break;
+                case 'test':
+                    parts[0] = path.join('commonTest', 'generated');
+                    break;
+            }
+        }
+
+        return path.join(context.compilerOptions.outDir!, parts.join(path.sep) + this.extension);
+    }
+
+    protected override getIdentifierName(identifier: cs.Identifier, expression: ts.Identifier): string {
         const paramName = super.getIdentifierName(identifier, expression);
         if (
             identifier.tsSymbol &&
@@ -45,10 +65,15 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return paramName;
     }
 
-    protected visitPrefixUnaryExpression(parent: cs.Node, expression: ts.PrefixUnaryExpression) {
+    protected override visitPrefixUnaryExpression(parent: cs.Node, expression: ts.PrefixUnaryExpression) {
         const pre = super.visitPrefixUnaryExpression(parent, expression);
-        if (pre) {
-            switch (pre.operator) {
+
+        const preUnwrapped = pre && cs.isCastExpression(pre)
+            ? (pre.expression as cs.PrefixUnaryExpression)
+            : (pre as cs.PrefixUnaryExpression);
+
+        if (preUnwrapped) {
+            switch (preUnwrapped.operator) {
                 case '++':
                 case '--':
                     const op = this._context.typeChecker.getSymbolAtLocation(expression.operand);
@@ -61,7 +86,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return pre;
     }
 
-    protected visitPostfixUnaryExpression(parent: cs.Node, expression: ts.PostfixUnaryExpression) {
+    protected override visitPostfixUnaryExpression(parent: cs.Node, expression: ts.PostfixUnaryExpression) {
         const post = super.visitPostfixUnaryExpression(parent, expression);
         if (post) {
             switch (post.operator) {
@@ -77,7 +102,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return post;
     }
 
-    protected visitBinaryExpression(parent: cs.Node, expression: ts.BinaryExpression) {
+    protected override visitBinaryExpression(parent: cs.Node, expression: ts.BinaryExpression) {
         const bin = super.visitBinaryExpression(parent, expression);
         // detect parameter assignment
         if (
@@ -98,7 +123,8 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         // a == this or this == a
         // within an equals method needs to have the operator ===
 
-        if (bin && 
+        if (
+            bin &&
             cs.isBinaryExpression(bin) &&
             (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
                 expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken) &&
@@ -167,7 +193,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         block.statements.unshift(...localParams);
     }
 
-    protected visitGetAccessor(parent: cs.ClassDeclaration, classElement: ts.GetAccessorDeclaration) {
+    protected override visitGetAccessor(parent: cs.ClassDeclaration, classElement: ts.GetAccessorDeclaration) {
         this._paramReferences.push(new Map<string, cs.Identifier[]>());
         this._paramsWithAssignment.push(new Set<string>());
 
@@ -179,7 +205,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return el;
     }
 
-    protected visitSetAccessor(parent: cs.ClassDeclaration, classElement: ts.SetAccessorDeclaration) {
+    protected override visitSetAccessor(parent: cs.ClassDeclaration, classElement: ts.SetAccessorDeclaration) {
         this._paramReferences.push(new Map<string, cs.Identifier[]>());
         this._paramsWithAssignment.push(new Set<string>());
 
@@ -194,7 +220,10 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return el;
     }
 
-    protected visitConstructorDeclaration(parent: cs.ClassDeclaration, classElement: ts.ConstructorDeclaration) {
+    protected override visitConstructorDeclaration(
+        parent: cs.ClassDeclaration,
+        classElement: ts.ConstructorDeclaration
+    ) {
         this._paramReferences.push(new Map<string, cs.Identifier[]>());
         this._paramsWithAssignment.push(new Set<string>());
 
@@ -210,7 +239,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return constr;
     }
 
-    protected visitArrowExpression(parent: cs.Node, expression: ts.ArrowFunction) {
+    protected override visitArrowExpression(parent: cs.Node, expression: ts.ArrowFunction) {
         this._paramReferences.push(new Map<string, cs.Identifier[]>());
         this._paramsWithAssignment.push(new Set<string>());
 
@@ -222,7 +251,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return func;
     }
 
-    protected visitFunctionExpression(parent: cs.Node, expression: ts.FunctionExpression) {
+    protected override visitFunctionExpression(parent: cs.Node, expression: ts.FunctionExpression) {
         this._paramReferences.push(new Map<string, cs.Identifier[]>());
         this._paramsWithAssignment.push(new Set<string>());
 
@@ -234,7 +263,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return func;
     }
 
-    protected visitMethodDeclaration(
+    protected override visitMethodDeclaration(
         parent: cs.ClassDeclaration | cs.InterfaceDeclaration,
         classElement: ts.MethodDeclaration
     ) {
@@ -253,52 +282,26 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return method;
     }
 
-    protected visitPropertyAccessExpression(parent: cs.Node, expression: ts.PropertyAccessExpression) {
+    protected override visitPropertyAccessExpression(parent: cs.Node, expression: ts.PropertyAccessExpression) {
         const base = super.visitPropertyAccessExpression(parent, expression);
 
         return base;
     }
 
-    protected getSymbolName(parentSymbol: ts.Symbol, symbol: ts.Symbol, expression: cs.Expression): string | null {
+    protected override getSymbolName(
+        parentSymbol: ts.Symbol,
+        symbol: ts.Symbol,
+        expression: cs.Expression
+    ): string | null {
         switch (parentSymbol.name) {
-            case 'Array':
-                switch (symbol.name) {
-                    case 'length':
-                        // new Array<string>(other.length)
-                        if (expression.parent &&
-                            cs.isNewExpression(expression.parent) &&
-                            (expression.parent.tsNode as ts.NewExpression).arguments?.length === 1 &&
-                            (expression.parent.type as cs.UnresolvedTypeNode).tsType?.symbol
-                                ?.name === 'ArrayConstructor'
-                        ) {
-                            return 'size';
-                        }
-
-                        return 'size.toDouble()';
-                    case 'push':
-                        return 'add';
-                    case 'indexOf':
-                        return 'indexOfInDouble';
-                    case 'filter':
-                        return 'filterBy';
-                    case 'reverse':
-                        return 'rev';
-                    case 'fill':
-                        return 'fillWith';
-                    case 'map':
-                        return 'mapTo';
-                }
-                break;
             case 'String':
                 switch (symbol.name) {
                     case 'length':
                         if (
-                            expression.parent && (
-                            cs.isReturnStatement(expression.parent) ||
-                            cs.isVariableDeclaration(expression.parent) ||
-                            (cs.isBinaryExpression(expression.parent) &&
-                                expression.parent.operator === '=')
-                            )
+                            expression.parent &&
+                            (cs.isReturnStatement(expression.parent) ||
+                                cs.isVariableDeclaration(expression.parent) ||
+                                (cs.isBinaryExpression(expression.parent) && expression.parent.operator === '='))
                         ) {
                             return 'length.toDouble()';
                         }
@@ -314,25 +317,21 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
                         return 'lowercase';
                     case 'toUpperCase':
                         return 'uppercase';
+                    case 'split':
+                        return 'splitBy';
+                }
+                break;
+            case 'Number':
+                switch (symbol.name) {
+                    case 'toString':
+                        return 'toInvariantString';
                 }
                 break;
         }
         return null;
     }
 
-    private isWithinForInitializer(expression: ts.Node): Boolean {
-        if (!expression.parent) {
-            return false;
-        }
-
-        if (ts.isForStatement(expression.parent) && expression.parent.initializer === expression) {
-            return true;
-        }
-
-        return this.isWithinForInitializer(expression.parent!);
-    }
-
-    protected visitNonNullExpression(parent: cs.Node, expression: ts.NonNullExpression) {
+    protected override visitNonNullExpression(parent: cs.Node, expression: ts.NonNullExpression) {
         const nonNullExpression = {
             expression: {} as cs.Expression,
             parent: parent,
@@ -348,7 +347,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
         return nonNullExpression;
     }
 
-    protected visitAsExpression(parent: cs.Node, expression: ts.AsExpression): cs.Expression | null {
+    protected override visitAsExpression(parent: cs.Node, expression: ts.AsExpression): cs.Expression | null {
         if (this.isCastToEnum(expression)) {
             const methodAccess = {
                 nodeType: cs.SyntaxKind.MemberAccessExpression,
@@ -383,7 +382,7 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
             } as cs.MemberAccessExpression;
 
             let expr = this.visitExpression(methodAccess, expression.expression);
-            if(!expr) {
+            if (!expr) {
                 return null;
             }
             methodAccess.expression = expr;
@@ -413,5 +412,87 @@ export default class KotlinAstTransformer extends CSharpAstTransformer {
     private isCastToEnum(expression: ts.AsExpression) {
         let targetType = this._context.typeChecker.getTypeFromTypeNode(expression.type);
         return targetType.flags & ts.TypeFlags.Enum || targetType.flags & ts.TypeFlags.EnumLiteral;
+    }
+
+    protected override createMapEntry(parent: cs.Node, expression: ts.ArrayLiteralExpression): cs.Expression {
+        const csExpr = {
+            parent: parent,
+            tsNode: expression,
+            nodeType: cs.SyntaxKind.InvocationExpression,
+            arguments: [],
+            expression: {} as cs.Expression
+        } as cs.InvocationExpression;
+
+        const type: cs.TypeReference = {
+            nodeType: cs.SyntaxKind.TypeReference,
+            parent: csExpr,
+            reference: '',
+            tsNode: expression
+        };
+
+        type.reference = 'MapEntry';
+        if (expression.elements.length === 2) {
+            const keyType = this._context.getType(expression.elements[0]);
+            let keyTypeContainerName = this.getContainerTypeName(keyType);
+
+            const valueType = this._context.getType(expression.elements[1]);
+            let valueTypeContainerName = this.getContainerTypeName(valueType);
+
+            if (!keyTypeContainerName) {
+                type.typeArguments = type.typeArguments ?? [];
+                type.typeArguments.push({
+                    nodeType: cs.SyntaxKind.TypeReference,
+                    parent: type,
+                    reference: this.createUnresolvedTypeNode(type, expression.elements[0], keyType)
+                } as cs.TypeReference);
+            }
+
+            if (!valueTypeContainerName) {
+                type.typeArguments = type.typeArguments ?? [];
+                type.typeArguments.push({
+                    nodeType: cs.SyntaxKind.TypeReference,
+                    parent: type,
+                    reference: this.createUnresolvedTypeNode(type, expression.elements[1], valueType)
+                } as cs.TypeReference);
+            }
+
+            if (keyTypeContainerName || valueTypeContainerName) {
+                keyTypeContainerName = keyTypeContainerName || 'Object';
+                valueTypeContainerName = valueTypeContainerName || 'Object';
+                type.reference = keyTypeContainerName + valueTypeContainerName + type.reference;
+            }
+        }
+
+        type.reference = this._context.makeTypeName(`alphaTab.collections.${type.reference}`);
+        csExpr.expression = type;
+
+        expression.elements.forEach(e => {
+            const ex = this.visitExpression(csExpr, e);
+            if (ex) {
+                csExpr.arguments.push(ex);
+            }
+        });
+
+        return csExpr;
+    }
+
+    private getContainerTypeName(tsType: ts.Type): string | null {
+        if (this._context.isNullableType(tsType)) {
+            return null;
+        }
+        if (
+            (tsType.flags & ts.TypeFlags.Enum) !== 0 ||
+            (tsType.flags & ts.TypeFlags.EnumLike) !== 0 ||
+            (tsType.flags & ts.TypeFlags.EnumLiteral) !== 0
+        ) {
+            return null;
+        }
+        if ((tsType.flags & ts.TypeFlags.Number) !== 0 || (tsType.flags & ts.TypeFlags.NumberLiteral) !== 0) {
+            return 'Double';
+        }
+        if ((tsType.flags & ts.TypeFlags.Boolean) !== 0 || (tsType.flags & ts.TypeFlags.BooleanLiteral) !== 0) {
+            return 'Boolean';
+        }
+        return null;
     }
 }

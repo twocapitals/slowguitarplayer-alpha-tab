@@ -17,19 +17,19 @@ import { ScoreRestGlyph } from '@src/rendering/glyphs/ScoreRestGlyph';
 import { ScoreWhammyBarGlyph } from '@src/rendering/glyphs/ScoreWhammyBarGlyph';
 import { SpacingGlyph } from '@src/rendering/glyphs/SpacingGlyph';
 import { ScoreBarRenderer } from '@src/rendering/ScoreBarRenderer';
-import { NoteXPosition, NoteYPosition } from '../BarRendererBase';
-import { BeatBounds } from '../utils/BeatBounds';
-import { PercussionMapper } from '../../model/PercussionMapper';
-import { PercussionNoteHeadGlyph } from './PercussionNoteHeadGlyph';
-import { Logger } from '@src/alphatab';
-import { ArticStaccatoAboveGlyph } from './ArticStaccatoAboveGlyph';
-import { MusicFontSymbol } from '../../model/MusicFontSymbol';
+import { NoteXPosition, NoteYPosition } from '@src/rendering/BarRendererBase';
+import { BeatBounds } from '@src/rendering/utils/BeatBounds';
+import { PercussionMapper } from '@src/model/PercussionMapper';
+import { PercussionNoteHeadGlyph } from '@src/rendering/glyphs/PercussionNoteHeadGlyph';
+import { Logger } from '@src/Logger';
+import { ArticStaccatoAboveGlyph } from '@src/rendering/glyphs/ArticStaccatoAboveGlyph';
+import { MusicFontSymbol } from '@src/model/MusicFontSymbol';
 import { ICanvas, TextBaseline } from '@src/platform/ICanvas';
-import { PictEdgeOfCymbalGlyph } from './PictEdgeOfCymbalGlyph';
-import { PickStrokeGlyph } from './PickStrokeGlyph';
+import { PictEdgeOfCymbalGlyph } from '@src/rendering/glyphs/PictEdgeOfCymbalGlyph';
+import { PickStrokeGlyph } from '@src/rendering/glyphs/PickStrokeGlyph';
 import { PickStroke } from '@src/model/PickStroke';
-import { GuitarGolpeGlyph } from './GuitarGolpeGlyph';
-import { BeamingHelper } from '../utils/BeamingHelper';
+import { GuitarGolpeGlyph } from '@src/rendering/glyphs/GuitarGolpeGlyph';
+import { BeamingHelper } from '@src/rendering/utils/BeamingHelper';
 
 export class ScoreBeatGlyph extends BeatOnNoteGlyphBase {
     private _collisionOffset: number = -1000;
@@ -38,21 +38,21 @@ export class ScoreBeatGlyph extends BeatOnNoteGlyphBase {
     public noteHeads: ScoreNoteChordGlyph | null = null;
     public restGlyph: ScoreRestGlyph | null = null;
 
-    public getNoteX(note: Note, requestedPosition: NoteXPosition): number {
+    public override getNoteX(note: Note, requestedPosition: NoteXPosition): number {
         return this.noteHeads ? this.noteHeads.getNoteX(note, requestedPosition) : 0;
     }
 
-    public buildBoundingsLookup(beatBounds: BeatBounds, cx: number, cy: number) {
+    public override buildBoundingsLookup(beatBounds: BeatBounds, cx: number, cy: number) {
         if (this.noteHeads) {
             this.noteHeads.buildBoundingsLookup(beatBounds, cx + this.x, cy + this.y);
         }
     }
 
-    public getNoteY(note: Note, requestedPosition: NoteYPosition): number {
+    public override getNoteY(note: Note, requestedPosition: NoteYPosition): number {
         return this.noteHeads ? this.noteHeads.getNoteY(note, requestedPosition) : 0;
     }
 
-    public updateBeamingHelper(): void {
+    public override updateBeamingHelper(): void {
         if (this.noteHeads) {
             this.noteHeads.updateBeamingHelper(this.container.x + this.x);
         } else if (this.restGlyph) {
@@ -72,13 +72,13 @@ export class ScoreBeatGlyph extends BeatOnNoteGlyphBase {
         }
     }
 
-    public paint(cx: number, cy: number, canvas: ICanvas): void {
+    public override paint(cx: number, cy: number, canvas: ICanvas): void {
         if (!this._skipPaint) {
             super.paint(cx, cy, canvas);
         }
     }
 
-    public doLayout(): void {
+    public override doLayout(): void {
         // create glyphs
         let sr: ScoreBarRenderer = this.renderer as ScoreBarRenderer;
         if (!this.container.beat.isEmpty) {

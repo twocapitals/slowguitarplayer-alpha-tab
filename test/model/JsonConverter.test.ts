@@ -1,11 +1,14 @@
-import { FingeringMode, LayoutMode, LogLevel, NotationMode, Settings, StaveProfile } from "@src/alphatab";
+import { LayoutMode } from "@src/LayoutMode";
+import { LogLevel } from "@src/LogLevel";
+import { StaveProfile } from "@src/StaveProfile";
+import { Settings } from "@src/Settings";
 import { SettingsSerializer } from "@src/generated/SettingsSerializer";
 import { ScoreLoader } from "@src/importer/ScoreLoader";
 import { Color } from "@src/model/Color";
 import { Font, FontStyle } from "@src/model/Font";
 import { JsonConverter } from "@src/model/JsonConverter";
 import { Score } from "@src/model/Score";
-import { NotationElement, TabRhythmMode } from "@src/NotationSettings";
+import { NotationElement, TabRhythmMode, NotationMode, FingeringMode} from "@src/NotationSettings";
 import { TestPlatform } from "@test/TestPlatform";
 import { ComparisonHelpers } from "./ComparisonHelpers";
 
@@ -125,6 +128,7 @@ describe('JsonConverterTest', () => {
         expected.importer.mergePartGroupsInMusicXml = false;
 
         expected.player.soundFont = 'soundfont';
+        /**@target web*/
         expected.player.scrollElement = 'scroll';
         expected.player.vibrato.noteSlightAmplitude = 10;
         expected.player.slide.simpleSlideDurationRatio = 8;

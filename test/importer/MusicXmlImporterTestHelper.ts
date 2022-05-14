@@ -1,4 +1,4 @@
-import { LayoutMode } from '@src/DisplaySettings';
+import { LayoutMode } from '@src/LayoutMode';
 import { MusicXmlImporter } from '@src/importer/MusicXmlImporter';
 import { UnsupportedFormatError } from '@src/importer/UnsupportedFormatError';
 import { ByteBuffer } from '@src/io/ByteBuffer';
@@ -224,7 +224,11 @@ export class MusicXmlImporterTestHelper {
         }
     }
 
-    protected expectBendPointsEqual(expected: BendPoint[], actual: BendPoint[]): void {
+    protected expectBendPointsEqual(expected: BendPoint[] | null, actual: BendPoint[] | null): void {
+        if(expected == null || actual == null) {
+            expect(actual).toEqual(expected)
+            return;
+        }
         expect(actual.length).toEqual(expected.length, 'Mismatch on Count');
         for (let i: number = 0; i < expected.length; i++) {
             expect(actual[i].value).toEqual(actual[i].value);

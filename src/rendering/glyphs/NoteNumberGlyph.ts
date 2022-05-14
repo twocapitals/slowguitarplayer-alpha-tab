@@ -8,7 +8,7 @@ import { Bounds } from '@src/rendering/utils/Bounds';
 import { NoteBounds } from '@src/rendering/utils/NoteBounds';
 import { ModelUtils } from '@src/model/ModelUtils';
 import { NotationElement, NotationMode } from '@src/NotationSettings';
-import { BeatBounds } from '../utils/BeatBounds';
+import { BeatBounds } from '@src/rendering/utils/BeatBounds';
 
 export class NoteNumberGlyph extends Glyph {
     private _note: Note;
@@ -24,7 +24,7 @@ export class NoteNumberGlyph extends Glyph {
         this._note = note;
     }
 
-    public doLayout(): void {
+    public override doLayout(): void {
         let n: Note = this._note;
         let fret: number = n.fret - n.beat.voice.bar.staff.transpositionPitch;
         if (n.harmonicType === HarmonicType.Natural && n.harmonicValue !== 0) {
@@ -91,7 +91,7 @@ export class NoteNumberGlyph extends Glyph {
         }
     }
 
-    public paint(cx: number, cy: number, canvas: ICanvas): void {
+    public override paint(cx: number, cy: number, canvas: ICanvas): void {
         if (this.isEmpty) {
             return;
         }
@@ -112,6 +112,6 @@ export class NoteNumberGlyph extends Glyph {
         noteBounds.noteHeadBounds.y = cy + this.y - this.height/2;
         noteBounds.noteHeadBounds.w = this.width;
         noteBounds.noteHeadBounds.h = this.height;
-        this.renderer.scoreRenderer.boundsLookup!.addNote(noteBounds);
+        beatBounds.addNote(noteBounds);
     }
 }
