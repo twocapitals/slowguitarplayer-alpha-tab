@@ -170,7 +170,7 @@ export class ScoreRenderer implements IScoreRenderer {
             this.onRenderFinished();
             (this.postRenderFinished as EventEmitter).trigger();
         } else {
-            Logger.warning('Rendering', 'Current layout does not support dynamic resizing, nothing was done', null);
+            Logger.debug('Rendering', 'Current layout does not support dynamic resizing, nothing was done', null);
         }
         Logger.debug('Rendering', 'Resize finished');
     }
@@ -198,6 +198,7 @@ export class ScoreRenderer implements IScoreRenderer {
     public readonly error: IEventEmitterOfT<Error> = new EventEmitterOfT<Error>();
 
     private onRenderFinished() {
+        this.boundsLookup?.finish();
         const e = new RenderFinishedEventArgs();
         e.totalHeight = this.layout!.height;
         e.totalWidth = this.layout!.width;

@@ -30,6 +30,12 @@ export class MidiTickLookupFindBeatResult {
     public duration: number = 0;
 
     /**
+     * Gets or sets the duration in midi ticks for how long this tick lookup is valid
+     * starting at the `currentBeatLookup.start`
+     */
+    public tickDuration: number = 0;
+
+    /**
      * Gets or sets the beats ot highlight along the current beat.
      */
     public beatsToHighlight!: Beat[];
@@ -134,7 +140,8 @@ export class MidiTickLookup {
         currentBeatHint: MidiTickLookupFindBeatResult,
         tick: number
     ): MidiTickLookupFindBeatResult | null {
-        if (tick >= currentBeatHint.currentBeatLookup.start && tick < currentBeatHint.currentBeatLookup.end) {
+        const end = currentBeatHint.currentBeatLookup.start + currentBeatHint.tickDuration;
+        if (tick >= currentBeatHint.currentBeatLookup.start && tick < end) {
             // still same beat?
             return currentBeatHint;
         } else if (
@@ -190,9 +197,8 @@ export class MidiTickLookup {
         const result = new MidiTickLookupFindBeatResult();
         result.currentBeatLookup = beat;
         result.nextBeatLookup = nextBeat;
-        result.duration = !nextBeat
-            ? MidiUtils.ticksToMillis(beat.end - beat.start, beat.masterBar.tempo)
-            : MidiUtils.ticksToMillis(nextBeat.start - beat.start, beat.masterBar.tempo);
+        result.tickDuration = !nextBeat ? beat.end - beat.start : nextBeat.start - beat.start;
+        result.duration = MidiUtils.ticksToMillis(result.tickDuration, beat.masterBar.tempo)
         result.beatsToHighlight = beat.beatsToHighlight;
         return result;
     }
@@ -270,6 +276,20 @@ export class MidiTickLookup {
             return 0;
         }
         return this.masterBarLookup.get(bar.index)!.start;
+    }
+
+
+    /**
+     * Gets the start time in midi ticks for a given beat at which the masterbar is played the first time.
+     * @param beat The beat to find the time period for.
+     * @returns The time in midi ticks at which the beat is played the first time or 0 if the beat is not contained
+     */
+    public getBeatStart(beat:Beat): number {
+        if (!this.masterBarLookup.has(beat.voice.bar.index)) {
+            return 0;
+        }
+
+        return this.masterBarLookup.get(beat.voice.bar.index)!.start + beat.playbackStart;
     }
 
     /**

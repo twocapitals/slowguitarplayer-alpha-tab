@@ -3,7 +3,6 @@ import * as ts from 'typescript';
 export function setMethodBody(m: ts.MethodDeclaration, body: ts.FunctionBody): ts.MethodDeclaration {
     return ts.factory.updateMethodDeclaration(
         m,
-        m.decorators,
         m.modifiers,
         m.asteriskToken,
         m.name,
@@ -47,9 +46,6 @@ function findNode(node: ts.Node, kind: ts.SyntaxKind): ts.Node | null {
     return null;
 }
 
-export function addNewLines(stmts: ts.Statement[]) {
-    return stmts.map(stmt => ts.addSyntheticTrailingComment(stmt, ts.SyntaxKind.SingleLineCommentTrivia, '', true));
-}
 export function getTypeWithNullableInfo(
     checker: ts.TypeChecker,
     node: ts.TypeNode | undefined,

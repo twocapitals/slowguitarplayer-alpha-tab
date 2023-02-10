@@ -71,7 +71,7 @@ export class Track {
         this.staves.push(staff);
     }
 
-    public finish(settings: Settings, sharedDataBag: Map<string, unknown>): void {
+    public finish(settings: Settings, sharedDataBag: Map<string, unknown> | null = null): void {
         if (!this.shortName) {
             this.shortName = this.name;
             if (this.shortName.length > Track.ShortNameMaxLength) {
@@ -102,6 +102,7 @@ export class Track {
                         // initialize lyrics list for beat if required
                         if (!beat.lyrics) {
                             beat.lyrics = new Array<string>(lyrics.length);
+                            beat.lyrics.fill("");
                         }
                         // assign chunk
                         beat.lyrics[li] = lyric.chunks[ci];

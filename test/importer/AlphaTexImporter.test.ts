@@ -1,7 +1,8 @@
 import { StaveProfile } from '@src/StaveProfile';
-import { AlphaTexImporter } from '@src/importer/AlphaTexImporter';
+import { AlphaTexError, AlphaTexImporter, AlphaTexSymbols } from '@src/importer/AlphaTexImporter';
 import { UnsupportedFormatError } from '@src/importer/UnsupportedFormatError';
 import { Beat } from '@src/model/Beat';
+import { BrushType } from '@src/model/BrushType';
 import { Clef } from '@src/model/Clef';
 import { CrescendoType } from '@src/model/CrescendoType';
 import { Duration } from '@src/model/Duration';
@@ -9,6 +10,7 @@ import { DynamicValue } from '@src/model/DynamicValue';
 import { Fingers } from '@src/model/Fingers';
 import { GraceType } from '@src/model/GraceType';
 import { HarmonicType } from '@src/model/HarmonicType';
+import { KeySignature } from '@src/model';
 import { Score } from '@src/model/Score';
 import { SlideInType } from '@src/model/SlideInType';
 import { SlideOutType } from '@src/model/SlideOutType';
@@ -151,6 +153,59 @@ describe('AlphaTexImporterTest', () => {
         expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].fret).toEqual(3);
         expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].isTremolo).toEqual(true);
         expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].tremoloSpeed).toEqual(Duration.Sixteenth);
+    });
+
+    it('brushes-arpeggio', () => {
+        let tex: string = `
+            (1.1 2.2 3.3 4.4).4{bd 60} (1.1 2.2 3.3 4.4).8{bu 60} (1.1 2.2 3.3 4.4).2{ad 60} (1.1 2.2 3.3 4.4).16{au 60} r |
+            (1.1 2.2 3.3 4.4).4{bd 120} (1.1 2.2 3.3 4.4).8{bu 120} (1.1 2.2 3.3 4.4).2{ad 120} (1.1 2.2 3.3 4.4).16{au 120} r |
+            (1.1 2.2 3.3 4.4).4{bd} (1.1 2.2 3.3 4.4).8{bu} (1.1 2.2 3.3 4.4).2{ad} (1.1 2.2 3.3 4.4).16{au} r
+        `;
+        let score: Score = parseTex(tex);
+        expect(score.tracks.length).toEqual(1);
+        expect(score.masterBars.length).toEqual(3);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats.length).toEqual(5);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].brushType).toEqual(BrushType.BrushDown);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].playbackDuration).toEqual(960);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].brushType).toEqual(BrushType.BrushUp);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].playbackDuration).toEqual(480);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].brushType).toEqual(BrushType.ArpeggioDown);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].playbackDuration).toEqual(1920);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[3].brushType).toEqual(BrushType.ArpeggioUp);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[3].playbackDuration).toEqual(240);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[3].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[4].isRest).toEqual(true);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[4].brushType).toEqual(BrushType.None);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[4].playbackDuration).toEqual(240);
+        expect(score.tracks[0].staves[0].bars[0].voices[0].beats[4].brushDuration).toEqual(0);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats.length).toEqual(5);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].brushType).toEqual(BrushType.BrushDown);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].brushDuration).toEqual(120);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].brushType).toEqual(BrushType.BrushUp);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].brushDuration).toEqual(120);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].brushType).toEqual(BrushType.ArpeggioDown);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].brushDuration).toEqual(120);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].brushType).toEqual(BrushType.ArpeggioUp);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].brushDuration).toEqual(120);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].isRest).toEqual(true);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].brushType).toEqual(BrushType.None);
+        expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].brushDuration).toEqual(0);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats.length).toEqual(5);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[0].brushType).toEqual(BrushType.BrushDown);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[0].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[1].brushType).toEqual(BrushType.BrushUp);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[1].brushDuration).toEqual(30);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[2].brushType).toEqual(BrushType.ArpeggioDown);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[2].brushDuration).toEqual(480);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[3].brushType).toEqual(BrushType.ArpeggioUp);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[3].brushDuration).toEqual(60);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[4].isRest).toEqual(true);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[4].brushType).toEqual(BrushType.None);
+        expect(score.tracks[0].staves[0].bars[2].voices[0].beats[4].brushDuration).toEqual(0);
+
     });
 
     it('hamonics-issue79', () => {
@@ -655,6 +710,29 @@ describe('AlphaTexImporterTest', () => {
         expect(score.masterBars[3].section!.marker).toEqual('S');
     });
 
+    it('key-signature', () => {
+        let tex: string = `:1 3.3 | \\ks C 3.3 | \\ks Cmajor 3.3 | \\ks Aminor 3.3 |
+        \\ks F 3.3 | \\ks bbmajor 3.3 | \\ks CMINOR 3.3 | \\ks aB 3.3 | \\ks db 3.3 | \\ks d#minor 3.3 |
+        \\ks g 3.3 | \\ks Dmajor 3.3 | \\ks f#minor 3.3 | \\ks E 3.3 | \\ks Bmajor 3.3 | \\ks Ebminor 3.3`;
+        let score: Score = parseTex(tex);
+        expect(score.masterBars[0].keySignature).toEqual(KeySignature.C)
+        expect(score.masterBars[1].keySignature).toEqual(KeySignature.C)
+        expect(score.masterBars[2].keySignature).toEqual(KeySignature.C)
+        expect(score.masterBars[3].keySignature).toEqual(KeySignature.C)
+        expect(score.masterBars[4].keySignature).toEqual(KeySignature.F)
+        expect(score.masterBars[5].keySignature).toEqual(KeySignature.Bb)
+        expect(score.masterBars[6].keySignature).toEqual(KeySignature.Eb)
+        expect(score.masterBars[7].keySignature).toEqual(KeySignature.Ab)
+        expect(score.masterBars[8].keySignature).toEqual(KeySignature.Db)
+        expect(score.masterBars[9].keySignature).toEqual(KeySignature.Gb)
+        expect(score.masterBars[10].keySignature).toEqual(KeySignature.G)
+        expect(score.masterBars[11].keySignature).toEqual(KeySignature.D)
+        expect(score.masterBars[12].keySignature).toEqual(KeySignature.A)
+        expect(score.masterBars[13].keySignature).toEqual(KeySignature.E)
+        expect(score.masterBars[14].keySignature).toEqual(KeySignature.B)
+        expect(score.masterBars[15].keySignature).toEqual(KeySignature.FSharp)
+    });
+
     it('pop-slap-tap', () => {
         let tex: string = '3.3{p} 3.3{s} 3.3{tt} r';
         let score: Score = parseTex(tex);
@@ -900,25 +978,11 @@ describe('AlphaTexImporterTest', () => {
     });
 
     it('expect-invalid-format-xml', () => {
-        try {
-            parseTex('<xml>');
-            fail('Expected error');
-        } catch (e) {
-            if (!(e instanceof UnsupportedFormatError)) {
-                fail(`Expected UnsupportedFormatError got ${e}`);
-            }
-        }
+        expect(() => parseTex('<xml>')).toThrowError(UnsupportedFormatError);
     });
 
     it('expect-invalid-format-other-text', () => {
-        try {
-            parseTex('This is not an alphaTex file');
-            fail('Expected error');
-        } catch (e) {
-            if (!(e instanceof UnsupportedFormatError)) {
-                fail(`Expected UnsupportedFormatError got ${e}`);
-            }
-        }
+        expect(() => parseTex('This is not an alphaTex file')).toThrowError(UnsupportedFormatError);
     });
 
     it('auto-detect-tuning-from-instrument', () => {
@@ -953,13 +1017,12 @@ describe('AlphaTexImporterTest', () => {
     });
 
     it('does-not-hang-on-backslash', () => {
-        try {
-            parseTex('\\title Test . 3.3 \\')
-            fail('Parsing should fail');
-        } catch (e) {
-            // success
-        }
-    })
+        expect(() => parseTex('\\title Test . 3.3 \\')).toThrowError(UnsupportedFormatError);
+    });
+
+    it('disallows-unclosed-string', () => {
+        expect(() => parseTex('\\title "Test . 3.3')).toThrowError(UnsupportedFormatError);
+    });
 
     function runSectionNoteSymbolTest(noteSymbol: string) {
         const score = parseTex(`1.3.4 * 4 | \\section Verse ${noteSymbol}.1 | 2.3.4*4`);
@@ -967,6 +1030,7 @@ describe('AlphaTexImporterTest', () => {
         expect(score.masterBars.length).toEqual(3);
         expect(score.tracks[0].staves[0].bars[0].voices[0].beats.length).toEqual(4);
         expect(score.masterBars[1].section!.text).toEqual('Verse');
+        expect(score.masterBars[1].section!.marker).toEqual('');
         expect(score.tracks[0].staves[0].bars[1].voices[0].beats.length).toEqual(1);
     }
 
@@ -974,5 +1038,94 @@ describe('AlphaTexImporterTest', () => {
         runSectionNoteSymbolTest('r');
         runSectionNoteSymbolTest('-');
         runSectionNoteSymbolTest('x');
-    })
+    });
+
+    it('loads-score-twice-without-hickups', () => {
+        const tex = `\\title Test
+        \\words test
+        \\music alphaTab
+        \\copyright test
+        \\tempo 200
+        \\instrument 30
+        \\capo 2
+        \\tuning G3 D2 G2 B2 D3 A4
+        .
+        0.5.2 1.5.4 3.4.4 | 5.3.8 5.3.8 5.3.8 5.3.8 r.2`;
+        const importer: AlphaTexImporter = new AlphaTexImporter();
+        for (const _i of [1, 2]) {
+            importer.initFromString(tex, new Settings());
+            const score = importer.readScore();
+            expect(score.title).toEqual('Test');
+            expect(score.words).toEqual('test');
+            expect(score.music).toEqual('alphaTab');
+            expect(score.copyright).toEqual('test');
+            expect(score.tempo).toEqual(200);
+            expect(score.tracks.length).toEqual(1);
+            expect(score.tracks[0].playbackInfo.program).toEqual(30);
+            expect(score.tracks[0].staves[0].capo).toEqual(2);
+            expect(score.tracks[0].staves[0].tuning.join(',')).toEqual('55,38,43,47,50,69');
+            expect(score.masterBars.length).toEqual(2);
+            expect(score.tracks[0].staves[0].bars[0].voices[0].beats.length).toEqual(3);
+            {
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].duration).toEqual(Duration.Half);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].fret).toEqual(0);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[0].notes[0].string).toEqual(2);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].duration).toEqual(Duration.Quarter);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].notes[0].fret).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[1].notes[0].string).toEqual(2);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].duration).toEqual(Duration.Quarter);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].notes[0].fret).toEqual(3);
+                expect(score.tracks[0].staves[0].bars[0].voices[0].beats[2].notes[0].string).toEqual(3);
+            }
+            expect(score.tracks[0].staves[0].bars[1].voices[0].beats.length).toEqual(5);
+            {
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].duration).toEqual(Duration.Eighth);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].notes[0].fret).toEqual(5);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[0].notes[0].string).toEqual(4);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].duration).toEqual(Duration.Eighth);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].notes[0].fret).toEqual(5);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[1].notes[0].string).toEqual(4);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].duration).toEqual(Duration.Eighth);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].notes[0].fret).toEqual(5);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[2].notes[0].string).toEqual(4);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].notes.length).toEqual(1);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].duration).toEqual(Duration.Eighth);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].notes[0].fret).toEqual(5);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[3].notes[0].string).toEqual(4);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].notes.length).toEqual(0);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].duration).toEqual(Duration.Half);
+                expect(score.tracks[0].staves[0].bars[1].voices[0].beats[4].isRest).toEqual(true);
+            }
+        }
+    });
+
+    it('error-shows-symbol-data', () => {
+        const tex = '3.3.ABC';
+        expect(() => parseTex(tex)).toThrowError(UnsupportedFormatError);
+        try {
+            parseTex(tex);
+        } catch (e) {
+            if(!(e instanceof UnsupportedFormatError)) {
+                fail('Did not throw correct error');
+                return;
+            }
+            if(!(e.inner instanceof AlphaTexError)) {
+                fail('Did not contain an AlphaTexError');
+                return;
+            }
+            const i = e.inner as AlphaTexError;
+            expect(i.expected).toEqual(AlphaTexSymbols.Number);
+            expect(i.message?.includes('Number')).toBeTrue();
+            expect(i.symbol).toEqual(AlphaTexSymbols.String);
+            expect(i.message?.includes('String')).toBeTrue();
+            expect(i.symbolData).toEqual('ABC');
+            expect(i.message?.includes('ABC')).toBeTrue();
+        }
+    });
 });

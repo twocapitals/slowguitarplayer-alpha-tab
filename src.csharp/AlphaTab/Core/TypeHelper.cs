@@ -14,6 +14,21 @@ namespace AlphaTab.Core
             return new List<T>(values);
         }
 
+        public static void Add<T>(this IList<T> list, IList<T> newItems)
+        {
+            if(list is List<T> l)
+            {
+                l.AddRange(newItems);
+            }
+            else
+            {
+                foreach (var i in newItems)
+                {
+                    list.Add(i);
+                }
+            }
+        }
+
         public static IList<T> Splice<T>(this IList<T> data, double start, double deleteCount)
         {
             var items = data.GetRange((int) start, (int) deleteCount);
@@ -101,6 +116,13 @@ namespace AlphaTab.Core
             data.Insert(0, item);
         }
 
+        public static T Shift<T>(this IList<T> data)
+        {
+            var i = data[0];
+            data.RemoveAt(0);
+            return i;
+        }
+
         public static T Pop<T>(this IList<T> data)
         {
             if (data.Count > 0)
@@ -128,7 +150,7 @@ namespace AlphaTab.Core
 
         public static void InsertRange<T>(this IList<T> data, int index, IEnumerable<T> newItems)
         {
-            if (data is System.Collections.Generic.List<T> l)
+            if (data is List<T> l)
             {
                 l.InsertRange(index, newItems);
             }
@@ -146,7 +168,7 @@ namespace AlphaTab.Core
         {
             switch (data)
             {
-                case System.Collections.Generic.List<T> l:
+                case List<T> l:
                     l.Sort((a, b) => (int) func(a, b));
                     break;
                 case T[] array:
@@ -352,6 +374,12 @@ namespace AlphaTab.Core
         public static string SubstringIndex(this string s, double startIndex, double endIndex)
         {
             return s.Substring((int) startIndex, (int) (endIndex - startIndex));
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static string ReplaceAll(this string s, string before, string after)
+        {
+            return s.Replace(before, after);
         }
 
         public static string TypeOf(object? actual)

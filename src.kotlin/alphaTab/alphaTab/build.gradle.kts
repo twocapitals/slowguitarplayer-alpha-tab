@@ -15,7 +15,7 @@ plugins {
     id("com.android.library")
     `maven-publish`
     signing
-    id("org.jetbrains.dokka") version "1.6.21"
+    id("org.jetbrains.dokka") version "1.7.20"
 
     // iOS
     //    kotlin("native.cocoapods")
@@ -25,7 +25,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             dependencies {
-                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
             }
             kotlin.srcDirs("../../../dist/lib.kotlin/commonMain/generated")
         }
@@ -58,8 +58,8 @@ kotlin {
     sourceSets {
         val androidMain by getting {
             dependencies {
-                implementation("androidx.core:core-ktx:1.8.0")
-                implementation("androidx.appcompat:appcompat:1.4.2")
+                implementation("androidx.core:core-ktx:1.9.0")
+                implementation("androidx.appcompat:appcompat:1.6.0")
             }
         }
 
@@ -79,9 +79,7 @@ kotlin {
             }
         }
 
-        val androidAndroidTestRelease by getting
         val androidTest by getting {
-            dependsOn(androidAndroidTestRelease)
             dependencies {
                 implementation(kotlin("test-junit"))
                 implementation("junit:junit:4.13.2")
@@ -92,12 +90,15 @@ kotlin {
 }
 
 android {
-    compileSdk = 31
+    compileSdk = 33
 
     sourceSets["main"].manifest.srcFile("src/androidMain/AndroidManifest.xml")
     sourceSets["main"].assets.srcDirs(
         "../../../font/bravura",
         "../../../font/sonivox"
+    )
+    sourceSets["main"].kotlin.srcDirs(
+        "../../../dist/lib.kotlin/commonMain/generated"
     )
     sourceSets["test"].manifest.srcFile("src/androidTest/AndroidManifest.xml")
     sourceSets["test"].assets.srcDirs(
@@ -106,6 +107,10 @@ android {
         "../../../font/roboto",
         "../../../font/ptserif"
     )
+    sourceSets["test"].kotlin.srcDirs(
+        "../../../dist/lib.kotlin/commonTest/generated"
+    )
+
     androidResources {
         ignoreAssetsPattern = arrayOf(
             "eot",
@@ -121,7 +126,7 @@ android {
 
     defaultConfig {
         minSdk = 24
-        targetSdk = 31
+        targetSdk = 33
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -130,13 +135,20 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }
 
 dependencies {
     // To use the androidx.test.core APIs
-    androidTestImplementation("androidx.test:core:1.4.0")
+    androidTestImplementation("androidx.test:core:1.5.0")
     // Kotlin extensions for androidx.test.core
-    androidTestImplementation("androidx.test:core-ktx:1.4.0")
+    androidTestImplementation("androidx.test:core-ktx:1.5.0")
 }
 
 val fetchTestResultsTask by tasks.registering {

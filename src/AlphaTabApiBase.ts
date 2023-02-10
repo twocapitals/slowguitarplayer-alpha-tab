@@ -183,6 +183,10 @@ export class AlphaTabApiBase<TSettings> {
      * Applies any changes that were done to the settings object and informs the {@link renderer} about any new values to consider.
      */
     public updateSettings(): void {
+        const score = this.score;
+        if (score) {
+            ModelUtils.applyPitchOffsets(this.settings, score);
+        }
         this.renderer.updateSettings(this.settings);
         // enable/disable player if needed
         if (this.settings.player.enablePlayer) {
@@ -272,8 +276,8 @@ export class AlphaTabApiBase<TSettings> {
     }
 
     private internalRenderTracks(score: Score, tracks: Track[]): void {
+        ModelUtils.applyPitchOffsets(this.settings, score);
         if (score !== this.score) {
-            ModelUtils.applyPitchOffsets(this.settings, score);
             this.score = score;
             this.tracks = tracks;
             this._trackIndexes = [];
@@ -327,8 +331,13 @@ export class AlphaTabApiBase<TSettings> {
                 this._cursorWrapper.width = result.totalWidth;
                 this._cursorWrapper.height = result.totalHeight;
             }
+            
+            if(result.width > 0 || result.height > 0) {
+                this.uiFacade.beginAppendRenderResults(result);
+            }
+        } else {
+            this.uiFacade.beginAppendRenderResults(result);
         }
-        this.uiFacade.beginAppendRenderResults(result);
     }
 
     private updateRenderResult(result: RenderFinishedEventArgs | null): void {
@@ -785,6 +794,7 @@ export class AlphaTabApiBase<TSettings> {
         this._playerState = PlayerState.Paused;
         // we need to update our position caches if we render a tablature
         this.renderer.postRenderFinished.on(() => {
+            this._currentBeat = null;
             this.cursorUpdateTick(this._previousTick, false, this._previousTick > 10);
         });
         if (this.player) {
@@ -800,9 +810,7 @@ export class AlphaTabApiBase<TSettings> {
                     let currentBeat = this._currentBeat;
                     let tickCache = this._tickCache;
                     if (currentBeat && tickCache) {
-                        this.player!.tickPosition =
-                            tickCache.getMasterBarStart(currentBeat.currentBeat.voice.bar.masterBar) +
-                            currentBeat.currentBeat.playbackStart;
+                        this.player!.tickPosition = tickCache.getBeatStart(currentBeat.currentBeat);
                     }
                 }
             });
@@ -1017,7 +1025,7 @@ export class AlphaTabApiBase<TSettings> {
                         if (
                             nextBeatBoundings &&
                             nextBeatBoundings.barBounds.masterBarBounds.staveGroupBounds ===
-                                barBoundings.staveGroupBounds
+                            barBoundings.staveGroupBounds
                         ) {
                             nextBeatX = nextBeatBoundings.visualBounds.x;
                         }
@@ -1140,8 +1148,8 @@ export class AlphaTabApiBase<TSettings> {
         if (this.settings.player.enableUserInteraction) {
             // for the selection ensure start < end
             if (this._selectionEnd) {
-                let startTick: number = this._selectionStart!.beat.absolutePlaybackStart;
-                let endTick: number = this._selectionEnd!.beat.absolutePlaybackStart;
+                let startTick: number = this._tickCache?.getBeatStart(this._selectionStart!.beat) ?? this._selectionStart!.beat.absolutePlaybackStart;
+                let endTick: number = this._tickCache?.getBeatStart(this._selectionEnd!.beat) ?? this._selectionEnd!.beat.absolutePlaybackStart;
                 if (endTick < startTick) {
                     let t: SelectionInfo = this._selectionStart!;
                     this._selectionStart = this._selectionEnd;
@@ -1157,7 +1165,7 @@ export class AlphaTabApiBase<TSettings> {
                 // move to selection start
                 this._currentBeat = null; // reset current beat so it is updating the cursor
                 if (this._playerState === PlayerState.Paused) {
-                    this.cursorUpdateTick(this._selectionStart.beat.absolutePlaybackStart, false);
+                    this.cursorUpdateTick(this._tickCache.getBeatStart(this._selectionStart.beat), false);
                 }
                 this.tickPosition = realMasterBarStart + this._selectionStart.beat.playbackStart;
                 // set playback range
@@ -1309,8 +1317,8 @@ export class AlphaTabApiBase<TSettings> {
         if (!endBeat.bounds) {
             endBeat.bounds = cache.findBeat(endBeat.beat);
         }
-        let startTick: number = startBeat.beat.absolutePlaybackStart;
-        let endTick: number = endBeat.beat.absolutePlaybackStart;
+        let startTick: number = this._tickCache?.getBeatStart(startBeat.beat) ?? startBeat.beat.absolutePlaybackStart;
+        let endTick: number = this._tickCache?.getBeatStart(endBeat.beat) ?? endBeat.beat.absolutePlaybackStart;
         if (endTick < startTick) {
             let t: SelectionInfo = startBeat;
             startBeat = endBeat;
